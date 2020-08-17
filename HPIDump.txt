@@ -1,0 +1,55 @@
+HPIDump 1.5.1 - HPI File Extract
+
+This program will extract all the files and the directory structure from
+the *.hpi and *.ufo files.
+
+The files and directories are created in the current directory.
+
+Command line format:
+HPIDump filename.hpi [-o output_directory_name] [-d] [-h] [file1] [file2]
+
+filename.hpi            is the name of the file to extract
+
+output_directory_name   is the optional name of the
+                        directory to extract it to.
+
+fileX                   One or more file specifications to extract.
+                        Wildcards allowed.
+
+Options:
+-h - Print this help message
+-d - Detailed output
+
+The program's default behavior is to just extract everything from the
+HPI file.
+
+The HPI directory structure will be recreated in the output directory.
+
+The program is a true 32-bit application, so it must run under Win95
+(or NT, but I haven't tested that).
+
+It can be used as a direct replacement for WriteHPI, which brings up the
+obvious question: Why use this instead of WriteHPI?
+
+It's faster (32 bit code).
+
+It handles long file names, and file and directory names with spaces in
+them, gracefully - No _ characters needed.
+
+It will extract files that WriteHPI can't.
+(example: the sounds\cdoggy.wav file from totala1.hpi)
+
+If you have any comments or suggestions, email me at joed@cws.org.
+
+Credits:
+Eric DeZert for writing WriteHPI.
+ZLib compression and decompression by Jean-loup Gailly (compression) and 
+Mark Adler (decompression). 
+For more info, see the zlib Home Page at http://www.cdrom.com/pub/infozip/zlib/
+
+Changes from 1.5:
+Now verifies TAK format checksums.
+File date now set correctly on files extracted from TAK archives.
+
+Changes from 1.4:
+Will now extract from TA:Kingdoms files.

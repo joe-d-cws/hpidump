@@ -1,0 +1,280 @@
+HPI 2 File Format
+
+Document version 1.0
+
+This is for HPI files used by TA:Kingdoms.  The format used by
+Total Annihilation is described in the HPI-FMT document.
+
+ZLib compression and decompression by Jean-loup Gailly (compression) and 
+Mark Adler (decompression). 
+For more info, see the zlib Home Page at http://www.cdrom.com/pub/infozip/zlib/
+
+Warning: This is intended for use by people that already know what
+they're doing.
+
+I'm a C programmer, so I'm doing things in C notation here, but
+I'll try to explain it so that those of you that don't speak C
+will be able to understand.  If you don't understand, write me
+at joed@cws.org and I'll try to clear things up.
+
+The first part of the file is a version header, followed by a file header.
+
+The version header looks like this:
+
+typedef struct _HPIVersion {
+  long HPIMarker;		  /* 'HAPI' */
+  long Version;                   /* 'BANK' if saved gamed */
+} HPIVersion;
+
+HPIMarker
+
+This is just a marker.  The value is always HAPI in ASCII.  In 
+hex, it's 0x49504148.
+
+Version
+
+If it's a TA saved game, the value is BANK in ASCII, or 0x4B4E4142 in
+hex.  
+If the value is 0x00010000, then it's a Total Annihilation archive.  
+See the HPI-FMT document.
+If it's 0x00020000, then it's a TA:Kingdoms archive.
+
+Immediately following the version header is the file header.  It looks
+like this:
+
+typedef struct _HPIHEADER2 {
+  long DirBlock;
+  long DirSize;
+  long NameBlock;
+  long NameSize;
+  long Data;
+  long Last78;
+} HPIHEADER2;
+
+DirBlock
+
+This is a pointer to the file directory.
+This block may or may not be compressed.  It it starts with 
+'SQSH' (hex 0x48535153), it's compressed.  If it doesn't,
+it's not.  Decompress like any other SQSH block, described
+below.
+
+DirSize
+
+This is the size of the directory block pointed to above.
+
+NameBlock
+
+This is a pointer to the actual file names.
+This block may or may not be compressed.  It it starts with 
+'SQSH' (hex 0x48535153), it's compressed.  If it doesn't,
+it's not.  Decompress like any other SQSH block, described
+below.
+
+NameSize
+
+This is the size of the file name block pointed to above.
+
+Data
+
+This is the start of the actual file data, as near as I can figure.
+It always seems to be set to 0x20.
+
+Last78
+
+This is either 0, or it points to the last 78 bytes of the file.
+There is some data at that point, but I haven't figured out more
+than the copyright information.
+
+
+HOW THE DIRECTORY WORKS
+
+Read in the DirBlock and NameBlock.  Decompress if necessary.
+
+The NameBlock is merely a list if null-terminated file names of
+varying lengths.  It also starts with a null.
+
+The directory block consists of either file or directory entries.
+
+The first entry in the DirBlock will be the directory entry
+for the root directory of the file.
+
+A directory entry looks like this:
+typedef struct _HPIDIR2 {
+  long NamePtr;
+  long FirstSubDir;
+  long SubCount;
+  long FirstFile;
+  long FileCount;
+} HPIDIR2;
+
+NamePtr
+
+This points to the name of the directory in the NameBlock.
+
+FirstSubdir
+
+This points to the directory entry in the DirBlock of the
+first subdirectory of this directory.  Subsequent
+subdirectory entries follow.
+
+SubCount
+
+How many subdirectories there are in this directory.
+
+FirstFile
+
+This points to the file entry in the DirBlock of the
+first file of this directory.  Subsequent file entries
+follow.
+
+FileCount
+
+How many file entries there are in this directory.
+
+
+A file entry looks like this:
+typedef struct _HPIENTRY2 {
+  long NamePtr;
+  long Start;
+  long DecompressedSize;
+  long CompressedSize; /* 0 = no compression */
+  long Date;  /* date in time_t format */
+  long Checksum;
+} HPIENTRY2;
+
+NamePtr
+
+Points to the file name in the NameBlock.
+
+Start
+
+Points to the start of the file in the hpi archive.
+
+DecompressedSize
+
+The final decompressed size of the file.
+
+CompressedSize
+
+The total compressed size of the file.  If this is 0, the 
+file is not compressed.
+
+Date
+
+The file date in time_t format.  This is the number of
+seconds since Jan 1, 1970, GMT.
+
+Checksum
+
+A checksum.  This isn't really a single checksum - it's actually 4
+checksums in one, but it's easier to manipulate it if you treat it
+as a single long.  More on checksum calculation below.
+
+CHECKSUM CALCULATION
+
+The checksum in each HPIENTRY2 is calculated from the uncompressed file
+data.
+
+It's actually four checksums in one, each 8-bit byte being one of the
+checksums.
+
+The first one is the sum of all the unsigned bytes in the file.
+
+The second one is the cumulative XOR of all the unsigned bytes
+in the file.
+
+The third one is the sum of all the unsigned bytes in the file, each
+byte XOR'd with its offset before being added.
+
+The fourth one is the cumulative XOR of all the unsigned bytes 
+in the file, each byte XOR'd with its offset before being XOR'd.
+
+Here's some C code to calculate it:
+
+int CheckCalc(long *cs, char *buff, long size)
+{
+  int count;
+  unsigned int c;
+  unsigned char *check = (unsigned char *) cs;
+
+  for (count = 0; count < size; count++) {
+    c = (unsigned char) buff[count];
+    check[0] += c;
+    check[1] ^= c;
+    check[2] += (c ^ ((unsigned char) (count & 0x000000FF)));
+    check[3] ^= (c + ((unsigned char) (count & 0x000000FF)));
+  }
+  return *cs;  
+}
+
+
+DECOMPRESSION OF BLOCKS AND FILES
+
+If the block was not compressed at all, then it is just inserted
+into the HPI file as one big chunk.
+
+Each chunk looks like this:
+
+typedef struct _HPIChunk {
+  long Marker;            /* always 0x48535153 (SQSH) */
+  char Unknown1;
+  char CompMethod;        /* 1=LZ77, 2=ZLib */
+  char Encrypt;           /* is the block encrypted? */          
+  long CompressedSize;    /* the length of the compressed data */
+  long DecompressedSize;  /* the length of the decompressed data */
+  long Checksum;          /* Checksum */
+  char data[];            /* 'CompressedSize' bytes of data */
+} HPIChunk;
+
+Marker
+
+This is the start-of-chunk marker, and is always 0x48535153 (ASCII 'SQSH').
+
+Unknown1
+I know not what this is for.  It's always 0x02.
+Maybe some sort of version number?
+
+CompMethod
+This is the compression method.  It's 1 for LZ77, 2 for ZLib.
+I don't know if TAK does LZ77 - all the files distributed with
+the game use ZLib.
+
+Encrypt
+This tells whether the block is encrypted.  See below.
+
+CompressedSize
+
+This is the size of the compressed data in the chunk.
+
+DecompressedSize
+
+This is the size of the decompressed data in the chunk.
+
+Checksum
+
+This is a checksum of the data.  It's merely the sum of all the bytes of
+data (treated as unsigned numbers) added together.
+
+data
+
+The actual compressed data in the chunk.
+
+The 'Encrypt' field in the HPIChunk header is set to 1 to indicate
+that this decryption needs to be done.
+
+To decrypt, do this:
+
+for x = 0 to CompressedSize-1
+  data[x] = (data[x] - x) XOR x
+next x
+
+If CompMethod is 2, use ZLib compression to decompress the block.  You can get the zlib
+source code from the zlib home page at http://www.cdrom.com/pub/infozip/zlib/ 
+
+From here, you've got enough data to proceed on your own.  Good luck!
+
+Like I said, if you have any questions, let me know.
+
+Joe D
+joed@cws.org
